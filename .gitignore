@@ -69,3 +69,4 @@ tensorboard_logs/
 *.temp
 
 DPLCLIP-REFERENCE-ONLY
+CLIP-REFERENCE-ONLY

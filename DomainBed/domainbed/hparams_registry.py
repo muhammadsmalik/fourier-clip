@@ -106,12 +106,18 @@ def _hparams(algorithm, dataset, random_seed):
         _hparam('clip_backbone', 'ViT-B/16', lambda r: r.choice(['ViT-B/16']))
         _hparam('clip_transform', True, lambda r: True)
         
-        # FADA-specific hyperparameters
-        _hparam('gaussian_sigma', 1.0, lambda r: r.choice([0.5, 1.0, 1.5, 2.0]))  # Gaussian blur sigma for frequency separation
-        _hparam('adapter_reduction', 4, lambda r: r.choice([2, 4, 8]))  # Adapter bottleneck size
+        # Image-level frequency decomposition hyperparameters
+        _hparam('frequency_method', 'fft', lambda r: r.choice(['fft', 'gaussian']))  # Decomposition method
+        _hparam('frequency_threshold', 0.1, lambda r: r.choice([0.05, 0.1, 0.15, 0.2]))  # FFT mask threshold
+        _hparam('gaussian_sigma', 1.0, lambda r: r.choice([0.5, 1.0, 1.5, 2.0]))  # Gaussian blur sigma
+        
+        # Feature fusion hyperparameters
         _hparam('fusion_weight', 0.5, lambda r: r.uniform(0.3, 0.7))  # α for low/high freq fusion
-        _hparam('aux_loss_weight', 0.5, lambda r: r.uniform(0.1, 1.0))  # λ for auxiliary losses
-        _hparam('use_frequency_aug', True, lambda r: r.choice([True, False]))  # FDAG augmentation
+        _hparam('training_mode', 'fusion', lambda r: r.choice(['fusion', 'low_only', 'high_only']))  # Feature selection mode
+        
+        # Ablation study hyperparameters (for future experiments)
+        _hparam('dual_processing', True, lambda r: r.choice([True, False]))  # Enable dual CLIP processing
+        _hparam('frequency_augmentation', False, lambda r: r.choice([True, False]))  # FDAG-style augmentation
 
     return hparams
 
