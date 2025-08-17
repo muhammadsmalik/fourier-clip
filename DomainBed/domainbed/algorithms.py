@@ -24,6 +24,7 @@ from domainbed.lib.misc import (
 
 ALGORITHMS = [
     'CLIPZeroShot',
+    'FADA_CLIP',
 ]
 
 def get_algorithm_class(algorithm_name):
@@ -89,3 +90,22 @@ class CLIPZeroShot(Algorithm):
     def predict(self, x):
         logits_per_image, _ = self.clip_model(x, self.prompt)
         return logits_per_image.softmax(dim=-1)
+
+
+class FADA_CLIP(CLIPZeroShot):
+    """FADA-CLIP: Frequency-Aware Dual-Stream Adaptation for CLIP"""
+    
+    def __init__(self, input_shape, num_classes, num_domains, hparams):
+        super(FADA_CLIP, self).__init__(input_shape, num_classes, num_domains, hparams)
+        
+        # For Phase 1: Just use CLIPZeroShot functionality
+        # Future phases will add frequency decomposition and adapters
+        print(f"FADA_CLIP initialized with frequency_threshold={hparams.get('frequency_threshold', 0.1)}")
+    
+    def update(self, minibatches, unlabeled=None):
+        # Phase 1: Use CLIPZeroShot behavior (no training needed)
+        return super().update(minibatches, unlabeled)
+    
+    def predict(self, x):
+        # Phase 1: Use CLIPZeroShot prediction
+        return super().predict(x)

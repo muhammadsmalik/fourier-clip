@@ -99,6 +99,19 @@ def _hparams(algorithm, dataset, random_seed):
     elif algorithm == "CLIPZeroShot":
         _hparam('clip_backbone', 'ViT-B/16', lambda r: r.choice(['ViT-B/16']))
         _hparam('clip_transform', True, lambda r: True)
+    
+    # FADA_CLIP hyperparameters (extends CLIPZeroShot)
+    elif algorithm == "FADA_CLIP":
+        # Inherit CLIPZeroShot hyperparameters
+        _hparam('clip_backbone', 'ViT-B/16', lambda r: r.choice(['ViT-B/16']))
+        _hparam('clip_transform', True, lambda r: True)
+        
+        # FADA-specific hyperparameters
+        _hparam('frequency_threshold', 0.1, lambda r: r.choice([0.05, 0.1, 0.15]))  # L parameter from FDA
+        _hparam('adapter_reduction', 4, lambda r: r.choice([2, 4, 8]))  # Adapter bottleneck size
+        _hparam('fusion_weight', 0.5, lambda r: r.uniform(0.3, 0.7))  # α for low/high freq fusion
+        _hparam('aux_loss_weight', 0.5, lambda r: r.uniform(0.1, 1.0))  # λ for auxiliary losses
+        _hparam('use_frequency_aug', True, lambda r: r.choice([True, False]))  # FDAG augmentation
 
     return hparams
 
