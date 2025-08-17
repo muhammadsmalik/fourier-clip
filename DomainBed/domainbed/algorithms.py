@@ -2561,13 +2561,16 @@ class CLIPZeroShot(Algorithm):
         
         import clip
         
-        # Load CLIP model
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.clip_model, self.preprocess = clip.load("ViT-B/16", device=device)
-        self.clip_model.eval()
+        # Load CLIP model (following reference paper pattern)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.clip_model = clip.load("ViT-B/16")[0].float()
+        
+        # Freeze all parameters
+        for param in self.clip_model.parameters():
+            param.requires_grad = False
         
         # Office-Home class names (65 classes)
-        self.classnames = [
+        classnames = [
             "Alarm_Clock", "Backpack", "Batteries", "Bed", "Bike", "Bottle", "Bucket", "Calculator",
             "Calendar", "Candles", "Chair", "Clipboards", "Computer", "Couch", "Curtains", "Desk_Lamp",
             "Drill", "Eraser", "Exit_Sign", "Fan", "File_Cabinets", "Flipflops", "Flowers", "Folder",
@@ -2578,30 +2581,15 @@ class CLIPZeroShot(Algorithm):
             "Telephone", "ToothBrush", "Toys", "Trash_Can", "TV", "Webcam"
         ]
         
-        # Create text prompts
-        text_prompts = [f"a photo of a {name.replace('_', ' ')}" for name in self.classnames]
-        text_tokens = clip.tokenize(text_prompts).to(device)
-        
-        # Compute text features
-        with torch.no_grad():
-            self.text_features = self.clip_model.encode_text(text_tokens)
-            self.text_features = self.text_features / self.text_features.norm(dim=-1, keepdim=True)
+        # Create prompts following reference paper pattern
+        classnames = [name.replace('_', ' ') for name in classnames]
+        self.prompt = torch.cat([clip.tokenize(f'a photo of a {ppt}') for ppt in classnames]).to(self.device)
     
     def update(self, minibatches, unlabeled=None):
         # CLIP is zero-shot, no training needed
-        return {'loss': 0.0}
+        return {'loss': 0}
     
     def predict(self, x):
-        device = next(self.clip_model.parameters()).device
-        x = x.to(device)
-        
-        with torch.no_grad():
-            # Encode images
-            image_features = self.clip_model.encode_image(x)
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-            
-            # Compute similarity
-            logit_scale = self.clip_model.logit_scale.exp()
-            logits = logit_scale * image_features @ self.text_features.t()
-            
-        return logits
+        # Use CLIP's built-in forward pass like reference paper
+        logits_per_image, _ = self.clip_model(x, self.prompt)
+        return logits_per_image
