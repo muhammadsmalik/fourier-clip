@@ -52,36 +52,123 @@ The implementation follows DomainBed's algorithm pattern where all algorithms in
 ## Key Commands
 
 ### Training and Evaluation
-```bash
-# Train FADA-CLIP with leave-one-domain-out protocol
-python DomainBed/domainbed/scripts/train.py \
-    --data_dir ./data \
-    --dataset OfficeHome \
-    --algorithm FADA_CLIP \
-    --test_env 0 \
-    --output_dir ./outputs/fada_clip_art
+**IMPORTANT**: Run commands from DomainBed directory using python -m module format:
 
-# Test CLIP baseline
-python DomainBed/domainbed/scripts/train.py \
-    --data_dir ./data \
+```bash
+# Change to DomainBed directory first
+%cd DomainBed
+
+# Test CLIP baseline (short run for testing)
+!python -m domainbed.scripts.train \
+    --data_dir ../data \
     --dataset OfficeHome \
     --algorithm CLIPZeroShot \
     --test_env 0 \
     --steps 100 \
-    --output_dir ./outputs/clip_baseline_test
+    --output_dir ../../outputs/clip_baseline_test
+
+# Test FADA-CLIP Phase 1 (should behave like CLIPZeroShot)
+!python -m domainbed.scripts.train \
+    --data_dir ../data \
+    --dataset OfficeHome \
+    --algorithm FADA_CLIP \
+    --test_env 0 \
+    --steps 10 \
+    --output_dir ../../outputs/fada_clip_phase1_test
+
+# Full FADA-CLIP training (once implementation is complete)
+!python -m domainbed.scripts.train \
+    --data_dir ../data \
+    --dataset OfficeHome \
+    --algorithm FADA_CLIP \
+    --test_env 0 \
+    --output_dir ../../outputs/fada_clip_art
 
 # Collect and analyze results
-python DomainBed/domainbed/scripts/collect_results.py \
-    --input_dir ./outputs/
+!python -m domainbed.scripts.collect_results \
+    --input_dir ../../outputs/
+```
+
+### Useful Bash Scripts
+
+**Create these scripts in the project root directory for easy testing:**
+
+**1. `test_clip_baseline.sh` - Test CLIPZeroShot on all domains:**
+```bash
+#!/bin/bash
+cd DomainBed
+echo "Testing CLIPZeroShot on all 4 domains..."
+
+for env in 0 1 2 3; do
+    echo "Running test_env $env..."
+    python -m domainbed.scripts.train \
+        --data_dir ../data \
+        --dataset OfficeHome \
+        --algorithm CLIPZeroShot \
+        --test_env $env \
+        --steps 100 \
+        --output_dir ../../outputs/clip_baseline_env$env
+done
+
+echo "Collecting results..."
+python -m domainbed.scripts.collect_results \
+    --input_dir ../../outputs/
+```
+
+**2. `test_fada_clip.sh` - Test FADA-CLIP on all domains:**
+```bash
+#!/bin/bash
+cd DomainBed
+echo "Testing FADA-CLIP on all 4 domains..."
+
+for env in 0 1 2 3; do
+    echo "Running FADA-CLIP test_env $env..."
+    python -m domainbed.scripts.train \
+        --data_dir ../data \
+        --dataset OfficeHome \
+        --algorithm FADA_CLIP \
+        --test_env $env \
+        --steps 100 \
+        --output_dir ../../outputs/fada_clip_env$env
+done
+
+echo "Collecting results..."
+python -m domainbed.scripts.collect_results \
+    --input_dir ../../outputs/
+```
+
+**3. `quick_test.sh` - Quick functionality test:**
+```bash
+#!/bin/bash
+cd DomainBed
+echo "Quick FADA-CLIP functionality test..."
+
+python -m domainbed.scripts.train \
+    --data_dir ../data \
+    --dataset OfficeHome \
+    --algorithm FADA_CLIP \
+    --test_env 0 \
+    --steps 10 \
+    --output_dir ../../outputs/quick_test
 ```
 
 ### Development Workflow
+
+**IMPORTANT: All experiments run on Google Colab, not locally**
+
 ```bash
-# Main execution environment
-# Use fada_clip_colab.ipynb in Google Colab
+# Local development (Claude Code environment)
+# - Implement algorithms in DomainBed/domainbed/algorithms.py
+# - Update hyperparameters in DomainBed/domainbed/hparams_registry.py  
+# - Commit and push to GitHub
+
+# Experiment execution (Google Colab)
+# - Pull latest changes from GitHub
+# - Run training scripts using the bash scripts provided
+# - Test implementations with quick_test.sh before full runs
 
 # Repository updates
-git pull origin main  # Get latest changes
+git pull origin main  # Get latest changes before running experiments
 ```
 
 ## Implementation Status
@@ -248,7 +335,19 @@ hparams['class_names'] = sorted(class_names)  # Dynamic class extraction
 - [ ] Plan to implement one component at a time
 
 ### Current Status Update:
-- ✅ **CLIPZeroShot baseline**: 82.4% performance achieved
+- ✅ **CLIPZeroShot baseline**: 82.5% performance achieved (confirmed)
 - ✅ **CLIP preprocessing**: Using native CLIP transforms
 - ✅ **Class name extraction**: Dynamic from dataset structure
-- ✅ **Ready for FADA-CLIP**: All baseline components working properly
+- ✅ **FADA-CLIP Phase 1**: Working skeleton implemented, behaves identically to CLIPZeroShot
+- ✅ **Ready for Phase 2**: Frequency decomposition implementation
+
+### CLIPZeroShot Baseline Results (Leave-One-Domain-Out):
+```
+Algorithm             A         C         P         R         Avg                  
+CLIPZeroShot          83.1      68.2      89.3      89.5      82.5
+```
+- **Art (A)**: 83.1% - Best performance in artistic domain (unexpected!)
+- **Clipart (C)**: 68.2% - Weakest domain (as expected from literature)  
+- **Product (P)**: 89.3% - Strong performance on product images
+- **Real-World (R)**: 89.5% - Strongest domain (as expected)
+- **Target**: Improve to 87-89% average through frequency-aware processing
