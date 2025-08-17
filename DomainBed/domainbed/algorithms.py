@@ -93,61 +93,77 @@ class CLIPZeroShot(Algorithm):
 
 
 class FrequencyDecomposer(nn.Module):
-    """Decomposes spatial features into low and high frequency components using FFT."""
+    """
+    Decomposes spatial features into low and high frequency components using Gaussian filtering.
     
-    def __init__(self, threshold=0.1):
+    This approach uses proven computer vision techniques:
+    - Low-pass: Gaussian blur (smooth, well-tested)
+    - High-pass: Original - Low-pass (perfect reconstruction guaranteed)
+    - No custom FFT masking (avoids reconstruction errors)
+    """
+    
+    def __init__(self, sigma=1.0):
         super(FrequencyDecomposer, self).__init__()
-        self.threshold = threshold
+        self.sigma = sigma  # Gaussian blur sigma (higher = more low-freq content)
         
     def forward(self, x):
         """
         Args:
             x: Spatial features [B, C, H, W]
         Returns:
-            low_freq: Low frequency features [B, C, H, W]
-            high_freq: High frequency features [B, C, H, W]
+            low_freq: Low frequency features [B, C, H, W] (smoothed)
+            high_freq: High frequency features [B, C, H, W] (details)
         """
-        # Apply 2D FFT with orthonormal normalization for energy preservation
-        fft_features = torch.fft.fft2(x, norm='ortho')  # [B, C, H, W] complex
+        # Use Gaussian blur for low-pass filtering
+        # This is differentiable and mathematically sound
+        low_freq = self._gaussian_blur_2d(x, self.sigma)
         
-        # Shift zero frequency to center (moves low frequencies from corners to center)
-        fft_shifted = torch.fft.fftshift(fft_features, dim=(-2, -1))
-        
-        # Create frequency mask for separation
-        B, C, H, W = x.shape
-        mask = self.create_centered_mask(H, W, self.threshold)
-        mask = mask.to(x.device)
-        
-        # Separate frequencies using mask
-        low_freq_fft = fft_shifted * mask        # Keep center (low frequencies)
-        high_freq_fft = fft_shifted * (1 - mask) # Keep edges (high frequencies)
-        
-        # Shift back to original frequency layout
-        low_freq_fft = torch.fft.ifftshift(low_freq_fft, dim=(-2, -1))
-        high_freq_fft = torch.fft.ifftshift(high_freq_fft, dim=(-2, -1))
-        
-        # Inverse FFT to get spatial features back
-        low_freq = torch.fft.ifft2(low_freq_fft, norm='ortho').real
-        high_freq = torch.fft.ifft2(high_freq_fft, norm='ortho').real
+        # High-pass = Original - Low-pass (guarantees perfect reconstruction)
+        high_freq = x - low_freq
         
         return low_freq, high_freq
     
-    def create_centered_mask(self, H, W, threshold):
-        """Create centered square mask for low frequencies."""
-        # Calculate mask size based on threshold (like FDA implementation)
-        mask_size = int(min(H, W) * threshold)
+    def _gaussian_blur_2d(self, x, sigma):
+        """Apply Gaussian blur using PyTorch's built-in functions."""
+        # Convert sigma to kernel size (rule of thumb: kernel_size = 6*sigma + 1)
+        kernel_size = int(6 * sigma + 1)
+        if kernel_size % 2 == 0:
+            kernel_size += 1  # Ensure odd kernel size
         
-        mask = torch.zeros(H, W)
-        center_h, center_w = H // 2, W // 2
+        # Use PyTorch's GaussianBlur (available in torchvision transforms)
+        # For now, implement using conv2d with Gaussian kernel
+        return self._conv_gaussian_blur(x, kernel_size, sigma)
+    
+    def _conv_gaussian_blur(self, x, kernel_size, sigma):
+        """Implement Gaussian blur using conv2d with Gaussian kernel."""
+        B, C, H, W = x.shape
         
-        # Create square mask in center
-        h1 = center_h - mask_size // 2
-        h2 = center_h + mask_size // 2 + 1
-        w1 = center_w - mask_size // 2
-        w2 = center_w + mask_size // 2 + 1
+        # Create 2D Gaussian kernel
+        kernel = self._get_gaussian_kernel_2d(kernel_size, sigma)
+        kernel = kernel.to(x.device, x.dtype)
         
-        mask[h1:h2, w1:w2] = 1.0
-        return mask
+        # Expand kernel for all channels
+        kernel = kernel.expand(C, 1, kernel_size, kernel_size)
+        
+        # Apply convolution with padding to maintain size
+        padding = kernel_size // 2
+        blurred = F.conv2d(x, kernel, padding=padding, groups=C)
+        
+        return blurred
+    
+    def _get_gaussian_kernel_2d(self, kernel_size, sigma):
+        """Create 2D Gaussian kernel."""
+        # Create 1D Gaussian
+        x = torch.arange(kernel_size, dtype=torch.float32)
+        x = x - (kernel_size - 1) / 2
+        gaussian_1d = torch.exp(-0.5 * (x / sigma) ** 2)
+        gaussian_1d = gaussian_1d / gaussian_1d.sum()
+        
+        # Create 2D Gaussian by outer product
+        gaussian_2d = gaussian_1d[:, None] * gaussian_1d[None, :]
+        gaussian_2d = gaussian_2d / gaussian_2d.sum()
+        
+        return gaussian_2d.unsqueeze(0).unsqueeze(0)
 
 
 class FADA_CLIP(CLIPZeroShot):
@@ -156,9 +172,9 @@ class FADA_CLIP(CLIPZeroShot):
     def __init__(self, input_shape, num_classes, num_domains, hparams):
         super(FADA_CLIP, self).__init__(input_shape, num_classes, num_domains, hparams)
         
-        # Initialize frequency decomposer
+        # Initialize frequency decomposer with Gaussian blur
         self.freq_decomposer = FrequencyDecomposer(
-            threshold=hparams.get('frequency_threshold', 0.1)
+            sigma=hparams.get('gaussian_sigma', 1.0)
         )
         
         # Setup spatial feature extraction hook on Conv1
@@ -168,7 +184,7 @@ class FADA_CLIP(CLIPZeroShot):
         )
         
         print(f"FADA_CLIP: Registered Conv1 hook for spatial features [768, 14, 14]")
-        print(f"FADA_CLIP: Frequency decomposer threshold={hparams.get('frequency_threshold', 0.1)}")
+        print(f"FADA_CLIP: Gaussian frequency decomposer sigma={hparams.get('gaussian_sigma', 1.0)}")
     
     def _spatial_hook_fn(self, module, input, output):
         """Hook function to capture Conv1 spatial features."""

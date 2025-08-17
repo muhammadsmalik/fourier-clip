@@ -107,7 +107,7 @@ def _hparams(algorithm, dataset, random_seed):
         _hparam('clip_transform', True, lambda r: True)
         
         # FADA-specific hyperparameters
-        _hparam('frequency_threshold', 0.1, lambda r: r.choice([0.05, 0.1, 0.15]))  # L parameter from FDA
+        _hparam('gaussian_sigma', 1.0, lambda r: r.choice([0.5, 1.0, 1.5, 2.0]))  # Gaussian blur sigma for frequency separation
         _hparam('adapter_reduction', 4, lambda r: r.choice([2, 4, 8]))  # Adapter bottleneck size
         _hparam('fusion_weight', 0.5, lambda r: r.uniform(0.3, 0.7))  # α for low/high freq fusion
         _hparam('aux_loss_weight', 0.5, lambda r: r.uniform(0.1, 1.0))  # λ for auxiliary losses
