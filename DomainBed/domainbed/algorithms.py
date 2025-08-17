@@ -7,6 +7,12 @@ import torch.autograd as autograd
 
 import copy
 import numpy as np
+
+try:
+    import torchvision.transforms.functional as TF
+    TORCHVISION_AVAILABLE = True
+except ImportError:
+    TORCHVISION_AVAILABLE = False
 from collections import OrderedDict
 try:
     from backpack import backpack, extend
@@ -96,15 +102,18 @@ class FrequencyDecomposer(nn.Module):
     """
     Decomposes spatial features into low and high frequency components using Gaussian filtering.
     
-    This approach uses proven computer vision techniques:
-    - Low-pass: Gaussian blur (smooth, well-tested)
-    - High-pass: Original - Low-pass (perfect reconstruction guaranteed)
-    - No custom FFT masking (avoids reconstruction errors)
+    Uses proven library implementations for robust, bug-free frequency separation:
+    - Low-pass: torchvision's gaussian_blur (if available) or fallback implementation
+    - High-pass: Original - Low-pass (mathematically guaranteed perfect reconstruction)
     """
     
     def __init__(self, sigma=1.0):
         super(FrequencyDecomposer, self).__init__()
-        self.sigma = sigma  # Gaussian blur sigma (higher = more low-freq content)
+        self.sigma = sigma  # Gaussian blur sigma (higher = more blur = more low-freq content)
+        self.kernel_size = self._get_kernel_size(sigma)
+        
+        if not TORCHVISION_AVAILABLE:
+            print("Warning: torchvision not available, using fallback Gaussian implementation")
         
     def forward(self, x):
         """
@@ -114,56 +123,62 @@ class FrequencyDecomposer(nn.Module):
             low_freq: Low frequency features [B, C, H, W] (smoothed)
             high_freq: High frequency features [B, C, H, W] (details)
         """
-        # Use Gaussian blur for low-pass filtering
-        # This is differentiable and mathematically sound
-        low_freq = self._gaussian_blur_2d(x, self.sigma)
+        # Apply Gaussian blur for low-pass filtering
+        if TORCHVISION_AVAILABLE:
+            low_freq = self._torchvision_gaussian_blur(x)
+        else:
+            low_freq = self._fallback_gaussian_blur(x)
         
         # High-pass = Original - Low-pass (guarantees perfect reconstruction)
         high_freq = x - low_freq
         
         return low_freq, high_freq
     
-    def _gaussian_blur_2d(self, x, sigma):
-        """Apply Gaussian blur using PyTorch's built-in functions."""
-        # Convert sigma to kernel size (rule of thumb: kernel_size = 6*sigma + 1)
-        kernel_size = int(6 * sigma + 1)
-        if kernel_size % 2 == 0:
-            kernel_size += 1  # Ensure odd kernel size
-        
-        # Use PyTorch's GaussianBlur (available in torchvision transforms)
-        # For now, implement using conv2d with Gaussian kernel
-        return self._conv_gaussian_blur(x, kernel_size, sigma)
+    def _get_kernel_size(self, sigma):
+        """Calculate appropriate kernel size for given sigma."""
+        # Standard rule: kernel should cover 3 standard deviations on each side
+        # This ensures 99.7% of the Gaussian is captured
+        kernel_size = 2 * int(3 * sigma) + 1
+        return max(3, kernel_size)  # Minimum 3x3 kernel
     
-    def _conv_gaussian_blur(self, x, kernel_size, sigma):
-        """Implement Gaussian blur using conv2d with Gaussian kernel."""
+    def _torchvision_gaussian_blur(self, x):
+        """Use torchvision's proven Gaussian blur implementation."""
+        return TF.gaussian_blur(x, kernel_size=self.kernel_size, sigma=self.sigma)
+    
+    def _fallback_gaussian_blur(self, x):
+        """Fallback Gaussian implementation if torchvision unavailable."""
         B, C, H, W = x.shape
         
         # Create 2D Gaussian kernel
-        kernel = self._get_gaussian_kernel_2d(kernel_size, sigma)
+        kernel = self._create_gaussian_kernel()
         kernel = kernel.to(x.device, x.dtype)
         
-        # Expand kernel for all channels
-        kernel = kernel.expand(C, 1, kernel_size, kernel_size)
+        # Expand kernel for all channels (depthwise convolution)
+        kernel = kernel.expand(C, 1, self.kernel_size, self.kernel_size)
         
-        # Apply convolution with padding to maintain size
-        padding = kernel_size // 2
+        # Apply convolution with padding to maintain spatial dimensions
+        padding = self.kernel_size // 2
         blurred = F.conv2d(x, kernel, padding=padding, groups=C)
         
         return blurred
     
-    def _get_gaussian_kernel_2d(self, kernel_size, sigma):
-        """Create 2D Gaussian kernel."""
-        # Create 1D Gaussian
-        x = torch.arange(kernel_size, dtype=torch.float32)
-        x = x - (kernel_size - 1) / 2
-        gaussian_1d = torch.exp(-0.5 * (x / sigma) ** 2)
-        gaussian_1d = gaussian_1d / gaussian_1d.sum()
+    def _create_gaussian_kernel(self):
+        """Create normalized 2D Gaussian kernel."""
+        # Create coordinate grids
+        coords = torch.arange(self.kernel_size, dtype=torch.float32)
+        coords = coords - (self.kernel_size - 1) / 2.0  # Center at 0
         
-        # Create 2D Gaussian by outer product
-        gaussian_2d = gaussian_1d[:, None] * gaussian_1d[None, :]
-        gaussian_2d = gaussian_2d / gaussian_2d.sum()
+        # Create 2D coordinate grids
+        y_grid, x_grid = torch.meshgrid(coords, coords, indexing='ij')
         
-        return gaussian_2d.unsqueeze(0).unsqueeze(0)
+        # Calculate Gaussian values
+        gaussian = torch.exp(-(x_grid**2 + y_grid**2) / (2 * self.sigma**2))
+        
+        # Normalize so sum equals 1
+        gaussian = gaussian / gaussian.sum()
+        
+        # Add batch and channel dimensions
+        return gaussian.unsqueeze(0).unsqueeze(0)
 
 
 class FADA_CLIP(CLIPZeroShot):
