@@ -305,12 +305,17 @@ class FADA_CLIP(CLIPZeroShot):
             fusion_weight=fusion_weight
         )
         
+        # Move modules to same device as CLIP model
+        self.image_freq_decomposer = self.image_freq_decomposer.to(self.device)
+        self.fusion_module = self.fusion_module.to(self.device)
+        
         # Training mode: use fusion vs. just low-freq vs. just high-freq
         self.training_mode = hparams.get('training_mode', 'fusion')  # 'fusion', 'low_only', 'high_only'
         
         print(f"FADA_CLIP: Image frequency decomposition method={freq_method}")
         print(f"FADA_CLIP: Frequency threshold={freq_threshold}, gaussian_sigma={gaussian_sigma}")
         print(f"FADA_CLIP: Fusion weight={fusion_weight}, training_mode={self.training_mode}")
+        print(f"FADA_CLIP: All modules moved to device: {self.device}")
     
     def update(self, minibatches, unlabeled=None):
         # Still zero-shot approach - no training needed
@@ -324,6 +329,9 @@ class FADA_CLIP(CLIPZeroShot):
         3. Fuse features using FFDI-inspired mechanism
         4. Classify against text prompts
         """
+        # Ensure input is on correct device
+        x = x.to(self.device)
+        
         # Step 1: Apply frequency decomposition to input images
         low_freq_images, high_freq_images = self.image_freq_decomposer(x)
         
@@ -361,6 +369,8 @@ class FADA_CLIP(CLIPZeroShot):
     
     def get_frequency_decomposition_info(self, x):
         """Utility function to inspect frequency decomposition (for debugging)."""
+        # Ensure input is on correct device
+        x = x.to(self.device)
         low_freq_images, high_freq_images = self.image_freq_decomposer(x)
         
         # Calculate energy ratios

@@ -155,7 +155,7 @@ def test_fada_clip_integration():
                     hparams=hparams
                 )
                 
-                # Test prediction with random images
+                # Test prediction with random images (device will be handled in predict method)
                 test_images = torch.randn(2, 3, 224, 224)
                 
                 with torch.no_grad():
