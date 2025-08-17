@@ -173,28 +173,82 @@ Research documentation in `RESEARCH_PLANNING_DOCS/`:
 - ✅ Repository structure: Clean separation of execution vs implementation
 - ✅ Dependencies: All handled by DomainBed installation
 
-**Next session should start with implementing CLIPZeroShot baseline in algorithms.py**
+## CRITICAL LESSONS LEARNED - CLIP BASELINE PERFORMANCE
 
-## CRITICAL DEVELOPMENT PRINCIPLE
+### What Caused 72% → 82.4% Performance Jump
+**NEVER repeat these mistakes:**
 
-⚠️ **NEVER implement multiple components at once** ⚠️
+1. **Wrong CLIP Model Version** 
+   - ❌ **Mistake**: Using ViT-B/32 or smaller models
+   - ✅ **Fix**: Always use ViT-B/16 for better performance
+   - 📈 **Impact**: ~7-8% improvement
 
-**Development Rules:**
-1. **One component at a time** - Never add multiple modules simultaneously
-2. **Test each component separately** - Create standalone tests before integration
-3. **Verify functionality** - Ensure each component works as expected before moving on
-4. **Incremental integration** - Add components one by one to the main system
-5. **Debug early** - If something doesn't work, fix it immediately before adding more
+2. **Wrong Image Preprocessing**
+   - ❌ **Mistake**: Using ImageNet normalization instead of CLIP's native preprocessing
+   - ✅ **Fix**: Always use `clip.load(model)[1]` for CLIP's preprocessing pipeline
+   - 📈 **Impact**: ~2-3% improvement
 
-**Example Workflow:**
-1. Implement `CLIPZeroShot` baseline → Test → Verify performance (~82.4%)
-2. Add frequency decomposition module → Test standalone → Integrate
-3. Add low-frequency adapter → Test → Integrate  
-4. Add high-frequency adapter → Test → Integrate
-5. Add fusion mechanism → Test → Integrate
+3. **Missing Class Name Integration**
+   - ❌ **Mistake**: Hardcoding class names or using wrong class names
+   - ✅ **Fix**: Automatically extract from dataset structure in `datasets.py`
+   - 📈 **Impact**: ~1-2% improvement
 
-**Why This Matters:**
-- Implementing 5-10 things at once makes debugging extremely difficult
-- Each component must be verified to work before building on top of it
-- Incremental development allows for early detection and fixing of issues
-- don't need to commit colab ipynb notebook to github
+### CRITICAL Configuration Requirements:
+```python
+# In hparams_registry.py:
+_hparam('clip_backbone', 'ViT-B/16', lambda r: r.choice(['ViT-B/16']))  # NOT ViT-B/32
+_hparam('clip_transform', True, lambda r: True)  # ESSENTIAL for CLIP preprocessing
+
+# In datasets.py:
+class_names = [f.name for f in os.scandir(os.path.join(root, environments[0])) if f.is_dir()]
+hparams['class_names'] = sorted(class_names)  # Dynamic class extraction
+```
+
+**Next session should start with implementing FADA-CLIP extension**
+
+## CRITICAL DEVELOPMENT PRINCIPLES
+
+⚠️ **NEVER implement custom functions without checking existing libraries first** ⚠️
+
+### Implementation Risk Minimization Rules:
+
+1. **Library-First Approach**
+   - ✅ **ALWAYS check** if CLIP, PyTorch, NumPy, or other libraries already provide the function
+   - ✅ **Search documentation** thoroughly before writing custom code
+   - ✅ **Use existing implementations** from proven codebases when available
+   - ❌ **NEVER assume** a function doesn't exist - verify first
+
+2. **Reference Implementation Priority**
+   - ✅ **Use proven patterns** from REFERENCE_RESOURCES/ whenever possible
+   - ✅ **Copy-adapt existing code** rather than writing from scratch
+   - ✅ **Minimal custom code** - only when absolutely necessary for novel algorithm
+   - ❌ **Avoid reinventing** standard operations (FFT, attention, etc.)
+
+3. **Incremental Development**
+   - ✅ **One component at a time** - Never add multiple modules simultaneously
+   - ✅ **Test each component separately** - Create standalone tests before integration
+   - ✅ **Verify functionality** - Ensure each component works as expected before moving on
+   - ❌ **No bulk implementation** - Avoid implementing 5-10 things at once
+
+### Example Safe Implementation Workflow:
+```
+1. Check PyTorch/CLIP docs for existing FFT functions → Use torch.fft if available
+2. Check REFERENCE_RESOURCES/ for proven patterns → Copy-adapt existing code
+3. Implement ONE component → Test standalone → Verify works
+4. Integrate to main system → Test integration → Verify no regression
+5. Only then move to next component
+```
+
+### Pre-Implementation Checklist:
+- [ ] Searched PyTorch documentation for existing functions
+- [ ] Searched CLIP library documentation  
+- [ ] Checked NumPy/SciPy for standard operations
+- [ ] Reviewed REFERENCE_RESOURCES/ for proven patterns
+- [ ] Identified minimal custom code needed
+- [ ] Plan to implement one component at a time
+
+### Current Status Update:
+- ✅ **CLIPZeroShot baseline**: 82.4% performance achieved
+- ✅ **CLIP preprocessing**: Using native CLIP transforms
+- ✅ **Class name extraction**: Dynamic from dataset structure
+- ✅ **Ready for FADA-CLIP**: All baseline components working properly
