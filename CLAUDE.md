@@ -197,3 +197,4 @@ Research documentation in `RESEARCH_PLANNING_DOCS/`:
 - Implementing 5-10 things at once makes debugging extremely difficult
 - Each component must be verified to work before building on top of it
 - Incremental development allows for early detection and fixing of issues
+- don't need to commit colab ipynb notebook to github

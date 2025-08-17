@@ -2551,3 +2551,57 @@ class ADRMX(Algorithm):
     
     def predict(self, x):
         return self.network(x)
+
+
+class CLIPZeroShot(Algorithm):
+    """CLIP Zero-Shot baseline for domain generalization"""
+    
+    def __init__(self, input_shape, num_classes, num_domains, hparams):
+        super(CLIPZeroShot, self).__init__(input_shape, num_classes, num_domains, hparams)
+        
+        import clip
+        
+        # Load CLIP model
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.clip_model, self.preprocess = clip.load("ViT-B/32", device=device)
+        self.clip_model.eval()
+        
+        # Office-Home class names (65 classes)
+        self.classnames = [
+            "Alarm_Clock", "Backpack", "Batteries", "Bed", "Bike", "Bottle", "Bucket", "Calculator",
+            "Calendar", "Candles", "Chair", "Clipboards", "Computer", "Couch", "Curtains", "Desk_Lamp",
+            "Drill", "Eraser", "Exit_Sign", "Fan", "File_Cabinets", "Flipflops", "Flowers", "Folder",
+            "Fork", "Glasses", "Hammer", "Helmet", "Kettle", "Keyboard", "Knives", "Lamp_Shade",
+            "Laptop", "Marker", "Monitor", "Mop", "Mouse", "Mug", "Notebook", "Oven", "Pan", "Paper_Clip",
+            "Pen", "Pencil", "Postit_Notes", "Printer", "Push_Pin", "Radio", "Refrigerator", "Ruler",
+            "Scissors", "Screwdriver", "Shelf", "Sink", "Sneakers", "Soda", "Speaker", "Spoon", "Table",
+            "Telephone", "ToothBrush", "Toys", "Trash_Can", "TV", "Webcam"
+        ]
+        
+        # Create text prompts
+        text_prompts = [f"a photo of a {name.replace('_', ' ')}" for name in self.classnames]
+        text_tokens = clip.tokenize(text_prompts).to(device)
+        
+        # Compute text features
+        with torch.no_grad():
+            self.text_features = self.clip_model.encode_text(text_tokens)
+            self.text_features = self.text_features / self.text_features.norm(dim=-1, keepdim=True)
+    
+    def update(self, minibatches, unlabeled=None):
+        # CLIP is zero-shot, no training needed
+        return {'loss': 0.0}
+    
+    def predict(self, x):
+        device = next(self.clip_model.parameters()).device
+        x = x.to(device)
+        
+        with torch.no_grad():
+            # Encode images
+            image_features = self.clip_model.encode_image(x)
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+            
+            # Compute similarity
+            logit_scale = self.clip_model.logit_scale.exp()
+            logits = logit_scale * image_features @ self.text_features.t()
+            
+        return logits
