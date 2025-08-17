@@ -98,6 +98,7 @@ def _hparams(algorithm, dataset, random_seed):
     # CLIPZeroShot hyperparameters (following reference paper pattern)
     elif algorithm == "CLIPZeroShot":
         _hparam('clip_backbone', 'ViT-B/16', lambda r: r.choice(['ViT-B/16']))
+        _hparam('clip_transform', True, lambda r: True)
 
     return hparams
 

@@ -188,6 +188,10 @@ class MultipleEnvironmentImageFolder(MultipleDomainDataset):
         super().__init__()
         environments = [f.name for f in os.scandir(root) if f.is_dir()]
         environments = sorted(environments)
+        
+        # Extract class names from first environment directory structure
+        class_names = [f.name for f in os.scandir(os.path.join(root, environments[0])) if f.is_dir()]
+        hparams['class_names'] = sorted(class_names)
 
         transform = transforms.Compose([
             transforms.Resize((224,224)),
@@ -207,10 +211,17 @@ class MultipleEnvironmentImageFolder(MultipleDomainDataset):
                 mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 
+        # CLIP transform support
+        if hparams.get('clip_transform', False):
+            import clip
+            print('Using clip_transform', hparams['clip_backbone'])
+            clip_transform = clip.load(hparams['clip_backbone'])[1]
+
         self.datasets = []
         for i, environment in enumerate(environments):
-
-            if augment and (i not in test_envs):
+            if hparams.get('clip_transform', False):
+                env_transform = clip_transform
+            elif augment and (i not in test_envs):
                 env_transform = augment_transform
             else:
                 env_transform = transform

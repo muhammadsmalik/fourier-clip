@@ -67,3 +67,5 @@ tensorboard_logs/
 # Temporary files
 *.tmp
 *.temp
+
+DPLCLIP-REFERENCE-ONLY
