@@ -2563,7 +2563,7 @@ class CLIPZeroShot(Algorithm):
         
         # Load CLIP model
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.clip_model, self.preprocess = clip.load("ViT-B/32", device=device)
+        self.clip_model, self.preprocess = clip.load("ViT-B/16", device=device)
         self.clip_model.eval()
         
         # Office-Home class names (65 classes)
