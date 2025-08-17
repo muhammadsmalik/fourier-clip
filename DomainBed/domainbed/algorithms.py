@@ -92,20 +92,123 @@ class CLIPZeroShot(Algorithm):
         return logits_per_image.softmax(dim=-1)
 
 
+class FrequencyDecomposer(nn.Module):
+    """Decomposes spatial features into low and high frequency components using FFT."""
+    
+    def __init__(self, threshold=0.1):
+        super(FrequencyDecomposer, self).__init__()
+        self.threshold = threshold
+        
+    def forward(self, x):
+        """
+        Args:
+            x: Spatial features [B, C, H, W]
+        Returns:
+            low_freq: Low frequency features [B, C, H, W]
+            high_freq: High frequency features [B, C, H, W]
+        """
+        # Apply 2D FFT with orthonormal normalization for energy preservation
+        fft_features = torch.fft.fft2(x, norm='ortho')  # [B, C, H, W] complex
+        
+        # Shift zero frequency to center (moves low frequencies from corners to center)
+        fft_shifted = torch.fft.fftshift(fft_features, dim=(-2, -1))
+        
+        # Create frequency mask for separation
+        B, C, H, W = x.shape
+        mask = self.create_centered_mask(H, W, self.threshold)
+        mask = mask.to(x.device)
+        
+        # Separate frequencies using mask
+        low_freq_fft = fft_shifted * mask        # Keep center (low frequencies)
+        high_freq_fft = fft_shifted * (1 - mask) # Keep edges (high frequencies)
+        
+        # Shift back to original frequency layout
+        low_freq_fft = torch.fft.ifftshift(low_freq_fft, dim=(-2, -1))
+        high_freq_fft = torch.fft.ifftshift(high_freq_fft, dim=(-2, -1))
+        
+        # Inverse FFT to get spatial features back
+        low_freq = torch.fft.ifft2(low_freq_fft, norm='ortho').real
+        high_freq = torch.fft.ifft2(high_freq_fft, norm='ortho').real
+        
+        return low_freq, high_freq
+    
+    def create_centered_mask(self, H, W, threshold):
+        """Create centered square mask for low frequencies."""
+        # Calculate mask size based on threshold (like FDA implementation)
+        mask_size = int(min(H, W) * threshold)
+        
+        mask = torch.zeros(H, W)
+        center_h, center_w = H // 2, W // 2
+        
+        # Create square mask in center
+        h1 = center_h - mask_size // 2
+        h2 = center_h + mask_size // 2 + 1
+        w1 = center_w - mask_size // 2
+        w2 = center_w + mask_size // 2 + 1
+        
+        mask[h1:h2, w1:w2] = 1.0
+        return mask
+
+
 class FADA_CLIP(CLIPZeroShot):
     """FADA-CLIP: Frequency-Aware Dual-Stream Adaptation for CLIP"""
     
     def __init__(self, input_shape, num_classes, num_domains, hparams):
         super(FADA_CLIP, self).__init__(input_shape, num_classes, num_domains, hparams)
         
-        # For Phase 1: Just use CLIPZeroShot functionality
-        # Future phases will add frequency decomposition and adapters
-        print(f"FADA_CLIP initialized with frequency_threshold={hparams.get('frequency_threshold', 0.1)}")
+        # Initialize frequency decomposer
+        self.freq_decomposer = FrequencyDecomposer(
+            threshold=hparams.get('frequency_threshold', 0.1)
+        )
+        
+        # Setup spatial feature extraction hook on Conv1
+        self.spatial_features = None
+        self.hook_handle = self.clip_model.visual.conv1.register_forward_hook(
+            self._spatial_hook_fn
+        )
+        
+        print(f"FADA_CLIP: Registered Conv1 hook for spatial features [768, 14, 14]")
+        print(f"FADA_CLIP: Frequency decomposer threshold={hparams.get('frequency_threshold', 0.1)}")
+    
+    def _spatial_hook_fn(self, module, input, output):
+        """Hook function to capture Conv1 spatial features."""
+        self.spatial_features = output  # [B, 768, 14, 14]
     
     def update(self, minibatches, unlabeled=None):
-        # Phase 1: Use CLIPZeroShot behavior (no training needed)
+        # Phase 2: Use CLIPZeroShot behavior (no training needed yet)
         return super().update(minibatches, unlabeled)
     
     def predict(self, x):
-        # Phase 1: Use CLIPZeroShot prediction
-        return super().predict(x)
+        # Reset spatial features for this forward pass
+        self.spatial_features = None
+        
+        # Normal CLIP forward pass (triggers our Conv1 hook)
+        logits_per_image, _ = self.clip_model(x, self.prompt)
+        
+        # Now spatial_features contains [B, 768, 14, 14] from Conv1
+        if self.spatial_features is not None:
+            # Apply frequency decomposition
+            low_freq, high_freq = self.freq_decomposer(self.spatial_features)
+            
+            # Phase 2: Verify shapes and reconstruction quality
+            print(f"Spatial features: {self.spatial_features.shape}")
+            print(f"Low freq: {low_freq.shape}, High freq: {high_freq.shape}")
+            
+            # Verify perfect reconstruction
+            reconstructed = low_freq + high_freq
+            error = (self.spatial_features - reconstructed).abs().mean()
+            print(f"Reconstruction error: {error:.6f}")
+            
+            # For Phase 2: Store decomposed features but don't use them yet
+            self._low_freq_features = low_freq
+            self._high_freq_features = high_freq
+        else:
+            print("Warning: Spatial features not captured by hook")
+        
+        # Return original CLIP prediction for Phase 2
+        return logits_per_image.softmax(dim=-1)
+    
+    def __del__(self):
+        """Clean up hook when object is destroyed."""
+        if hasattr(self, 'hook_handle') and self.hook_handle is not None:
+            self.hook_handle.remove()
