@@ -297,6 +297,47 @@ hparams['class_names'] = sorted(class_names)  # Dynamic class extraction
 
 ⚠️ **NEVER implement custom functions without checking existing libraries first** ⚠️
 
+## 🎯 **100% CONFIDENCE REQUIREMENT**
+
+**NEVER proceed with uncertain results - always achieve 100% confidence through debugging**
+
+### Debugging Standards:
+1. **Visual Verification**: Plot/visualize intermediate results when possible
+2. **Extreme Test Cases**: Test with trivial cases where output is known (e.g., constant patterns, pure frequencies)
+3. **Mathematical Verification**: Verify against known mathematical properties (e.g., Parseval's theorem for FFT)
+4. **Comparative Analysis**: Compare against reference implementations or known-good results
+5. **Edge Case Testing**: Test boundary conditions, different sizes, batch dimensions
+
+### When Results Are Unexpected:
+1. **STOP immediately** - don't proceed with uncertain behavior
+2. **Add comprehensive debugging** - print shapes, values, visualizations
+3. **Create minimal test cases** - isolate the specific issue
+4. **Verify each step independently** - break down complex operations
+5. **Compare with reference** - check against known implementations
+
+### Example Debugging Workflow:
+```python
+# Instead of: "Hmm, 0.5 ratio seems wrong but maybe it's okay"
+# Do this: "Let's verify every step until we have 100% confidence"
+
+def debug_frequency_separation():
+    # Test 1: Pure DC signal (should be 100% low-freq)
+    dc_signal = torch.ones(1, 768, 14, 14)
+    
+    # Test 2: Pure high-freq signal (alternating pattern)
+    high_freq_signal = create_alternating_pattern()
+    
+    # Test 3: Visualize FFT spectrum
+    plot_fft_spectrum(input_signal)
+    
+    # Test 4: Verify mask coverage
+    visualize_frequency_mask()
+    
+    # Only proceed when all tests give expected results
+```
+
+**Remember**: It's better to spend time debugging once than to build on uncertain foundations.
+
 ### Implementation Risk Minimization Rules:
 
 1. **Library-First Approach**
@@ -335,9 +376,11 @@ hparams['class_names'] = sorted(class_names)  # Dynamic class extraction
 - [ ] Plan to implement one component at a time
 
 ### Current Status Update:
-- ✅ **CLIPZeroShot baseline**: 82.5% performance achieved (confirmed)
+- ✅ **CLIPZeroShot baseline**: 82.4% performance achieved (confirmed)
 - ✅ **CLIP preprocessing**: Using native CLIP transforms
 - ✅ **Class name extraction**: Dynamic from dataset structure
+- ✅ **FADA-CLIP Phase 2**: Frequency decomposition implemented with Conv1 hook
+- 🔍 **Current**: Debugging frequency separation for 100% confidence verification
 - ✅ **FADA-CLIP Phase 1**: Working skeleton implemented, behaves identically to CLIPZeroShot
 - ✅ **Ready for Phase 2**: Frequency decomposition implementation
 
