@@ -57,6 +57,7 @@ ALGORITHMS = [
     'RDM',
     'ADRMX',
     'URM',
+    'CLIPZeroShot',
 ]
 
 def get_algorithm_class(algorithm_name):
